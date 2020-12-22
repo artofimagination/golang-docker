@@ -1,13 +1,10 @@
 package docker
 
 import (
-	"archive/tar"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/docker/docker/api/types"
@@ -17,6 +14,9 @@ import (
 	"github.com/jhoonb/archivex"
 	"github.com/pkg/errors"
 )
+
+var ErrNoImagesDeleted = errors.New("No images were deleted")
+var ErrImageNotFound = errors.New("Image not found")
 
 func parseResponse(reader io.Reader) (map[string]interface{}, error) {
 	d := json.NewDecoder(reader)
@@ -32,29 +32,18 @@ func parseResponse(reader io.Reader) (map[string]interface{}, error) {
 	return result, nil
 }
 
-func StartContainer(ID string) error {
-	cli, err := client.NewEnvClient()
-	if err != nil {
-		return err
-	}
-
-	if err := cli.ContainerStart(context.Background(), ID, types.ContainerStartOptions{}); err != nil {
-		err = errors.Wrap(errors.WithStack(err), "Failed to start container")
-		return err
-	}
-	return nil
-}
-
 func tarballFolder(contextName string, sourceDirectory string) error {
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
-	defer tw.Close()
-
 	tar := new(archivex.TarFile)
 	if err := tar.Create(contextName); err != nil {
+		if errClose := tar.Close(); errClose != nil {
+			return errors.Wrap(errors.WithStack(err), errClose.Error())
+		}
 		return err
 	}
 	if err := tar.AddAll(sourceDirectory, false); err != nil {
+		if errClose := tar.Close(); errClose != nil {
+			return errors.Wrap(errors.WithStack(err), errClose.Error())
+		}
 		return err
 	}
 	if err := tar.Close(); err != nil {
@@ -64,9 +53,37 @@ func tarballFolder(contextName string, sourceDirectory string) error {
 	return nil
 }
 
+func DeleteImage(imageID string) error {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return err
+	}
+
+	imagesDeleted, err := cli.ImageRemove(context.Background(), imageID, types.ImageRemoveOptions{})
+	if err != nil {
+		return err
+	}
+
+	if len(imagesDeleted) == 0 {
+		return ErrNoImagesDeleted
+	}
+	return nil
+}
+
+type Images []types.ImageSummary
+
+func GetImageIDByTag(i Images, inputTag string) (string, error) {
+	for _, value := range i {
+		for _, tag := range value.RepoTags {
+			if tag == inputTag {
+				return value.ID, nil
+			}
+		}
+	}
+	return "", ErrImageNotFound
+}
+
 func CreateImage(filePath string, imageName string) error {
-	log.Println(filePath)
-	log.Println(imageName)
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		return err
@@ -110,11 +127,24 @@ func CreateImage(filePath string, imageName string) error {
 		if errContext := dockerBuildContext.Close(); errContext != nil {
 			return errors.Wrap(errors.WithStack(dockerError), errContext.Error())
 		}
-		log.Println(dockerError)
 		return dockerError
 	}
 
 	return nil
+}
+
+func ListImages() ([]types.ImageSummary, error) {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return nil, err
+	}
+
+	images, err := cli.ImageList(context.Background(), types.ImageListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return images, nil
 }
 
 // CreateNewContainer creates and starts a docker container using an existing image
@@ -151,4 +181,81 @@ func CreateNewContainer(imageName string, address string, port string) (string, 
 	}
 
 	return cont.ID, nil
+}
+
+func DeleteContainer(ID string) error {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.ContainerRemove(
+		context.Background(),
+		ID,
+		types.ContainerRemoveOptions{
+			Force: true,
+		}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func StartContainer(ID string) error {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.ContainerStart(context.Background(), ID, types.ContainerStartOptions{}); err != nil {
+		err = errors.Wrap(errors.WithStack(err), "Failed to start container")
+		return err
+	}
+	return nil
+}
+
+func StopContainer(ID string) error {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.ContainerStop(context.Background(), ID, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ListContainers() ([]types.Container, error) {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return nil, err
+	}
+
+	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+	if err != nil {
+		return nil, err
+	}
+
+	return containers, nil
+}
+
+func StopContainerByImageID(imageID string) error {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return err
+	}
+
+	containers, err := cli.ContainerList(context.Background(), types.ContainerListOptions{All: true})
+	if err != nil {
+		return err
+	}
+
+	for _, container := range containers {
+		if container.ImageID == imageID {
+			if err := StopContainer(container.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -1,0 +1,3 @@
+pytest==6.1.2
+pytest_cases==2.5.0
+requests==2.22.0

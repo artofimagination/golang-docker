@@ -1,0 +1,373 @@
+import pytest
+import json
+from functionalTest import httpConnection
+from common import *
+
+dataColumns = ("data", "expected")
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer'
+    },
+    "test-image:latest"),
+
+    ({
+      'image-name': 'test-image-failure:latest',
+      'source-dir': './docker'
+    },
+    "close context.tar: file already closed: Error response from daemon: Cannot locate specified Dockerfile: Dockerfile")
+]
+
+ids=['Success', 'Failure']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_CreateImage(httpConnection, data, expected):
+  try:
+    r = httpConnection.POST("/create-image", data)
+  except Exception as e:
+    pytest.fail(f"Failed to send POST request")
+    return
+
+  if r.text != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer'
+    },
+    "test-image:latest"),
+
+    ({
+      'image-name': 'test-image-failure:latest'
+    },
+    "Image not found")
+]
+
+ids=['Success', 'No Image']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_GetImage(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+
+  try:
+    r = httpConnection.GET("/get-image", {"image-name": data['image-name']})
+  except Exception as e:
+    pytest.fail(f"Failed to send GET request")
+    return
+
+  if r.text != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+    },
+    "Delete completed"),
+
+    ({
+      'image-name': 'test-image-failure:latest'
+    },
+    "Image not found"),
+
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': "8082",
+      'address': "0.0.0.0"
+    },
+    "image is being used by running container"),
+]
+
+ids=['Success', 'No Image', 'Container still running']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_DeleteImage(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+
+  if 'port' in data:
+    ID = createContainer(data, httpConnection)
+    if ID is None:
+      return
+
+    try:
+      r = httpConnection.GET("/start-container", {"id":ID})
+    except Exception as e:
+      pytest.fail(f"Failed to send GET request")
+      stopContainer(data, httpConnection, ID)
+
+    if r.status_code != 200:
+      pytest.fail(f"Failed to execute request.\nDetails: {r.text}")
+      stopContainer(data, httpConnection, ID)
+
+  try:
+    r = httpConnection.POST("/delete-image", {"image-name": data['image-name']})
+  except Exception as e:
+    pytest.fail(f"Failed to send POST request")
+    if 'port' in data:
+      stopContainer(data, httpConnection, ID)
+
+  if ('port' not in data and r.text != expected) or ('port' in data and expected not in r.text):
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+
+  if 'port' in data:
+    stopContainer(data, httpConnection, ID) 
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0'
+    },
+    "Container created"),
+
+    ({
+      'image-name': 'test-image-failure:latest',
+      'port': '8080',
+      'address': '0.0.0.0'
+    },
+    "Failed to create docker container")
+]
+
+ids=['Success', 'No Image']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_CreateContainer(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+
+  try:
+    r = httpConnection.POST("/create-container", data)
+  except Exception as e:
+    pytest.fail(f"Failed to send POST request")
+    return
+
+  if r.text.split(":")[0] != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0'
+    },
+    "Container found"),
+
+    ({
+      'id': '1234',
+    },
+    "Container not found")
+]
+
+ids=['Success', 'No container']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_GetContainer(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+  ID = createContainer(data, httpConnection) 
+  if ID is None:
+    return
+
+  try:
+    r = httpConnection.GET("/get-container", {"id":ID})
+  except Exception as e:
+    pytest.fail(f"Failed to send GET request")
+    return
+
+  if r.text != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0'
+    },
+    "Container started"),
+
+    ({
+      'id': '1234',
+    },
+    "Failed to start container: Error response from daemon: No such container: 1234")
+]
+
+ids=['Success', 'No container']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_StartContainer(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+  ID = createContainer(data, httpConnection) 
+  if ID is None:
+    return
+
+  try:
+    r = httpConnection.GET("/start-container", {"id":ID})
+  except Exception as e:
+    pytest.fail(f"Failed to send GET request")
+    return
+
+  if r.text != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+  if 'id' not in data:
+    stopContainer(data, httpConnection, ID)
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0'
+    },
+    "Container stopped"),
+
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0',
+      'skip-start':1
+    },
+    "Container stopped")
+]
+
+ids=['Success', 'Not running']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_StopContainer(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+  ID = createContainer(data, httpConnection) 
+  if ID is None:
+    return
+
+  if 'skip-start' not in data:
+    try:
+      r = httpConnection.GET("/start-container", {"id":ID})
+    except Exception as e:
+      pytest.fail(f"Failed to send GET request")
+      return
+
+    if r.status_code != 200:
+      pytest.fail(f"Failed to execute request.\nDetails: {r.text}")
+      return
+
+  try:
+    r = httpConnection.GET("/stop-container", {"id":ID})
+  except Exception as e:
+    pytest.fail(f"Failed to send GET request")
+    return
+
+  if r.text != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0'
+    },
+    "Container stopped"),
+
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0',
+      'skip-start':1
+    },
+    "Container stopped")
+]
+
+ids=['Success', 'Not running']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_StopContainerByImageID(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+  ID = createContainer(data, httpConnection) 
+  if ID is None:
+    return
+
+  if 'skip-start' not in data:
+    try:
+      r = httpConnection.GET("/start-container", {"id":ID})
+    except Exception as e:
+      pytest.fail(f"Failed to send GET request")
+      return
+
+    if r.status_code != 200:
+      pytest.fail(f"Failed to execute request.\nDetails: {r.text}")
+      return
+
+  try:
+    r = httpConnection.GET("/get-image-id-by-tag", {"image-name":data["image-name"]})
+  except Exception as e:
+    pytest.fail(f"Failed to send GET request")
+    return
+
+  if r.status_code != 200:
+    pytest.fail(f"Failed to execute request.\nDetails: {r.text}")
+    return
+
+  ID = r.text 
+
+  try:
+    r = httpConnection.GET("/stop-container-by-image-id", {"id":ID})
+  except Exception as e:
+    pytest.fail(f"Failed to send GET request")
+    return
+
+  if r.text != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0'
+    },
+    "Container deleted"),
+
+    ({
+      'id': '1234',
+    },
+    "Error response from daemon: No such container: 1234")
+]
+
+ids=['Success', 'No container']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_DeleteContainer(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+  ID = createContainer(data, httpConnection) 
+  if ID is None:
+    return
+
+  try:
+    r = httpConnection.POST("/delete-container", {"id":ID})
+  except Exception as e:
+    pytest.fail(f"Failed to send POST request")
+    return
+
+  if r.text != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
