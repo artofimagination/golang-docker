@@ -1,0 +1,25 @@
+name: Functional Test CI
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    name: Functional testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Python Env
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8.5'
+          
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2
+
+      - name: Start test server
+        run: cp test/.env_functional_test .env && docker-compose up -d main-server
+
+      - name: Run functional test
+        run: pip3 install -r test/requirements.txt && pytest -v test

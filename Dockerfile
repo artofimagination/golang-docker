@@ -10,8 +10,7 @@ RUN go mod tidy
 #RUN apk --no-cache add curl && curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.31.0
 RUN cd $GOPATH/src/golang-docker/ && go build main.go
 
-# This container exposes port 8082 to the outside world
-EXPOSE 8081
+EXPOSE 8080
 
 # Run the executable
 CMD [ "./main" ]
