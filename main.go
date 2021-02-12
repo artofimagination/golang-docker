@@ -356,6 +356,40 @@ func deleteContainer(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, "Container deleted")
 }
 
+func containerExists(w http.ResponseWriter, r *http.Request) {
+	log.Println("Container exists")
+	data, err := decodePostData(w, r)
+	if err != nil {
+		return
+	}
+
+	ID, ok := data["id"].(string)
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Missing 'id'")
+		return
+	}
+
+	err = docker.ContainerExists(ID)
+	if err == nil {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "Container exists")
+		return
+	}
+
+	if err == docker.ErrContainerNotFound {
+		w.WriteHeader(http.StatusAccepted)
+		fmt.Fprint(w, err.Error())
+		return
+	}
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, err.Error())
+		return
+	}
+}
+
 func getContainer(w http.ResponseWriter, r *http.Request) {
 	log.Println("Getting container")
 	if err := checkRequestType(GET, w, r); err != nil {
@@ -401,6 +435,7 @@ func main() {
 	r.HandleFunc("/stop-container", stopContainer)
 	r.HandleFunc("/stop-container-by-image-id", stopContainerByImageID)
 	r.HandleFunc("/delete-container", deleteContainer)
+	r.HandleFunc("/container-exists", containerExists)
 	// Create Server and Route Handlers
 	srv := &http.Server{
 		Handler:      r,
