@@ -32,6 +32,10 @@ def test_CreateImage(httpConnection, data, expected):
     pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
     return
 
+  if deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
+    return
+
 createTestData = [
     ({
       'image-name': 'test-image:latest',
@@ -60,6 +64,10 @@ def test_GetImage(httpConnection, data, expected):
 
   if r.text != expected:
     pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+  if deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
     return
 
 createTestData = [
@@ -100,10 +108,12 @@ def test_DeleteImage(httpConnection, data, expected):
     except Exception as e:
       pytest.fail(f"Failed to send GET request")
       stopContainer(data, httpConnection, ID)
+      return
 
     if r.status_code != 200:
       pytest.fail(f"Failed to execute request.\nDetails: {r.text}")
       stopContainer(data, httpConnection, ID)
+      return
 
   try:
     r = httpConnection.POST("/delete-image", {"image-name": data['image-name']})
@@ -111,6 +121,7 @@ def test_DeleteImage(httpConnection, data, expected):
     pytest.fail(f"Failed to send POST request")
     if 'port' in data:
       stopContainer(data, httpConnection, ID)
+    return
 
   if ('port' not in data and r.text != expected) or ('port' in data and expected not in r.text):
     pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
@@ -151,6 +162,10 @@ def test_CreateContainer(httpConnection, data, expected):
   if r.text.split(":")[0] != expected:
     pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
     return
+  
+  if deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
+    return
 
 createTestData = [
     ({
@@ -185,6 +200,10 @@ def test_GetContainer(httpConnection, data, expected):
 
   if r.text != expected:
     pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+  
+  if 'image-name'in data and deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
     return
 
 createTestData = [
@@ -224,6 +243,10 @@ def test_StartContainer(httpConnection, data, expected):
 
   if 'id' not in data:
     stopContainer(data, httpConnection, ID)
+
+  if 'image-name'in data and deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
+    return
 
 createTestData = [
     ({
@@ -273,6 +296,10 @@ def test_StopContainer(httpConnection, data, expected):
 
   if r.text != expected:
     pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+  if 'image-name'in data and deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
     return
 
 createTestData = [
@@ -337,6 +364,10 @@ def test_StopContainerByImageID(httpConnection, data, expected):
     pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
     return
 
+  if 'image-name'in data and deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
+    return
+
 createTestData = [
     ({
       'image-name': 'test-image:latest',
@@ -358,6 +389,7 @@ ids=['Success', 'No container']
 def test_DeleteContainer(httpConnection, data, expected):
   if createImage(data, httpConnection) is False:
     return
+
   ID = createContainer(data, httpConnection) 
   if ID is None:
     return
@@ -370,4 +402,48 @@ def test_DeleteContainer(httpConnection, data, expected):
 
   if r.text != expected:
     pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+  if 'image-name'in data and deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
+    return
+
+createTestData = [
+    ({
+      'image-name': 'test-image:latest',
+      'source-dir': './workercontainer',
+      'port': '8080',
+      'address': '0.0.0.0'
+    },
+    "Container exists"),
+
+    ({
+      'id': '1234',
+    },
+    "Container not found")
+]
+
+ids=['Exists', 'No container']
+
+@pytest.mark.parametrize(dataColumns, createTestData, ids=ids)
+def test_ContainerExists(httpConnection, data, expected):
+  if createImage(data, httpConnection) is False:
+    return
+    
+  ID = createContainer(data, httpConnection) 
+  if ID is None:
+    return
+
+  try:
+    r = httpConnection.POST("/container-exists", {"id":ID})
+  except Exception as e:
+    pytest.fail(f"Failed to send POST request")
+    return
+
+  if r.text != expected:
+    pytest.fail(f"Test failed\nReturned: {r.text}\nExpected: {expected}")
+    return
+
+  if 'image-name'in data and deleteImage(data, httpConnection, data['image-name']) is False:
+    pytest.fail(f"Failed to cleanup test")
     return

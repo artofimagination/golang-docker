@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/docker/docker/api/types"
@@ -17,6 +18,7 @@ import (
 
 var ErrNoImagesDeleted = errors.New("No images were deleted")
 var ErrImageNotFound = errors.New("Image not found")
+var ErrContainerNotFound = errors.New("Container not found")
 
 func parseResponse(reader io.Reader) (map[string]interface{}, error) {
 	d := json.NewDecoder(reader)
@@ -59,10 +61,11 @@ func DeleteImage(imageID string) error {
 		return err
 	}
 
-	imagesDeleted, err := cli.ImageRemove(context.Background(), imageID, types.ImageRemoveOptions{})
+	imagesDeleted, err := cli.ImageRemove(context.Background(), imageID, types.ImageRemoveOptions{Force: true, PruneChildren: true})
 	if err != nil {
 		return err
 	}
+	log.Println(imagesDeleted)
 
 	if len(imagesDeleted) == 0 {
 		return ErrNoImagesDeleted
@@ -225,6 +228,35 @@ func StopContainer(ID string) error {
 	return nil
 }
 
+func PauseContainer(ID string) error {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.ContainerPause(context.Background(), ID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func UnpauseContainer(ID string) error {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.ContainerUnpause(context.Background(), ID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func IsContainerRunning(ID string) bool {
+
+	return true
+}
+
 func ListContainers() ([]types.Container, error) {
 	cli, err := client.NewEnvClient()
 	if err != nil {
@@ -237,6 +269,21 @@ func ListContainers() ([]types.Container, error) {
 	}
 
 	return containers, nil
+}
+
+func ContainerExists(ID string) error {
+	containerList, err := ListContainers()
+	if err != nil {
+		return err
+	}
+
+	for _, container := range containerList {
+		if container.ID == ID {
+			return nil
+		}
+	}
+
+	return ErrContainerNotFound
 }
 
 func StopContainerByImageID(imageID string) error {

@@ -40,3 +40,13 @@ def stopContainer(data, httpConnection, ID):
   if r.status_code != 200:
     pytest.fail(f"Failed to execute request.\nDetails: {r.text}")
     return
+
+def deleteImage(data, httpConnection, ID):
+  try:
+    r = httpConnection.POST("/delete-image", {"image-name": ID})
+  except Exception as e:
+    pytest.fail(f"Failed to send POST request")
+    if 'port' in data:
+      stopContainer(data, httpConnection, ID)
+    return False
+  return True
