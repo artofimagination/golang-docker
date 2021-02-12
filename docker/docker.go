@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/docker/docker/api/types"
@@ -65,7 +64,6 @@ func DeleteImage(imageID string) error {
 	if err != nil {
 		return err
 	}
-	log.Println(imagesDeleted)
 
 	if len(imagesDeleted) == 0 {
 		return ErrNoImagesDeleted
