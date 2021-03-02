@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 
 	"github.com/docker/docker/api/types"
@@ -201,7 +202,7 @@ func DeleteContainer(ID string) error {
 	return nil
 }
 
-func StartContainer(ID string) error {
+func StartContainer(ID string, networkName string) error {
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		return err
@@ -211,7 +212,44 @@ func StartContainer(ID string) error {
 		err = errors.Wrap(errors.WithStack(err), "Failed to start container")
 		return err
 	}
+
+	networkID, err := getNetworkID(networkName)
+	if err != nil {
+		return err
+	}
+
+	if err := networkConnect(networkID, ID); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+func GetIPAddress(containerID string, networkName string) (string, error) {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return "", err
+	}
+
+	networkID, err := getNetworkID(networkName)
+	if err != nil {
+		return "", err
+	}
+
+	network, err := cli.NetworkInspect(context.Background(), networkID)
+	if err != nil {
+		return "", err
+	}
+
+	log.Println(containerID)
+	for ID, container := range network.Containers {
+		log.Println(ID, container)
+		if ID == containerID {
+			return container.IPv4Address, nil
+		}
+	}
+
+	return "", errors.New("Container is not running or not connected to any network")
 }
 
 func StopContainer(ID string) error {
@@ -267,6 +305,38 @@ func ListContainers() ([]types.Container, error) {
 	}
 
 	return containers, nil
+}
+
+func getNetworkID(networkName string) (string, error) {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return "", err
+	}
+
+	networks, err := cli.NetworkList(context.Background(), types.NetworkListOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	for _, network := range networks {
+		if network.Name == networkName {
+			return network.ID, nil
+		}
+	}
+
+	return "", errors.New("Network not found")
+}
+
+func networkConnect(networkID string, containerID string) error {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return err
+	}
+
+	if err := cli.NetworkConnect(context.Background(), networkID, containerID, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 func ContainerExists(ID string) error {

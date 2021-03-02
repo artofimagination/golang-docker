@@ -232,7 +232,14 @@ func startContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := docker.StartContainer(ids[0]); err != nil {
+	networkNames, ok := r.URL.Query()["network"]
+	if !ok || len(networkNames[0]) < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, errors.New("Url Param 'network' is missing"))
+		return
+	}
+
+	if err := docker.StartContainer(ids[0], networkNames[0]); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, err.Error())
 		return
@@ -240,6 +247,37 @@ func startContainer(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "Container started")
+}
+
+func getContainerIP(w http.ResponseWriter, r *http.Request) {
+	log.Println("Getting container IP")
+	if err := checkRequestType(GET, w, r); err != nil {
+		return
+	}
+
+	ids, ok := r.URL.Query()["id"]
+	if !ok || len(ids[0]) < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, errors.New("Url Param 'id' is missing"))
+		return
+	}
+
+	networkNames, ok := r.URL.Query()["network"]
+	if !ok || len(networkNames[0]) < 1 {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, errors.New("Url Param 'network' is missing"))
+		return
+	}
+
+	ip, err := docker.GetIPAddress(ids[0], networkNames[0])
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, ip)
 }
 
 func stopContainer(w http.ResponseWriter, r *http.Request) {
@@ -432,6 +470,7 @@ func main() {
 	r.HandleFunc("/create-container", createContainer)
 	r.HandleFunc("/get-container", getContainer)
 	r.HandleFunc("/start-container", startContainer)
+	r.HandleFunc("/get-container-ip", getContainerIP)
 	r.HandleFunc("/stop-container", stopContainer)
 	r.HandleFunc("/stop-container-by-image-id", stopContainerByImageID)
 	r.HandleFunc("/delete-container", deleteContainer)
