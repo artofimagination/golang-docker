@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
 
 	"github.com/docker/docker/api/types"
@@ -225,6 +224,25 @@ func StartContainer(ID string, networkName string) error {
 	return nil
 }
 
+func GetNetworkEndpointResources(networkName string) (map[string]types.EndpointResource, error) {
+	cli, err := client.NewEnvClient()
+	if err != nil {
+		return nil, err
+	}
+
+	networkID, err := getNetworkID(networkName)
+	if err != nil {
+		return nil, err
+	}
+
+	network, err := cli.NetworkInspect(context.Background(), networkID)
+	if err != nil {
+		return nil, err
+	}
+
+	return network.Containers, nil
+}
+
 func GetIPAddress(containerID string, networkName string) (string, error) {
 	cli, err := client.NewEnvClient()
 	if err != nil {
@@ -241,9 +259,7 @@ func GetIPAddress(containerID string, networkName string) (string, error) {
 		return "", err
 	}
 
-	log.Println(containerID)
 	for ID, container := range network.Containers {
-		log.Println(ID, container)
 		if ID == containerID {
 			return container.IPv4Address, nil
 		}
